@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - "BiliMusic_V0.1.4_Windows.zip"
+      - ".github/workflows/build-windows.yml"
 
 permissions:
   contents: read
