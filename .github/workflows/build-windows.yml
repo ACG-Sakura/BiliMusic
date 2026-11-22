@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "BiliMusic_V0.1.2_Windows.zip"
+      - "BiliMusic_V0.1.2.1_Windows.zip"
       - ".github/workflows/build-windows.yml"
 
 permissions:
@@ -26,10 +26,11 @@ jobs:
       - name: Extract source archive
         shell: pwsh
         run: |
-          if (!(Test-Path "BiliMusic_V0.1.2_Windows.zip")) {
-            throw "Source archive not found. Upload BiliMusic_V0.1.2_Windows.zip to the repository root."
+          $archive = "BiliMusic_V0.1.2.1_Windows.zip"
+          if (!(Test-Path $archive)) {
+            throw "Source archive not found: $archive"
           }
-          Expand-Archive -Path "BiliMusic_V0.1.2_Windows.zip" -DestinationPath "$env:RUNNER_TEMP\source" -Force
+          Expand-Archive -Path $archive -DestinationPath "$env:RUNNER_TEMP\source" -Force
           $project = Join-Path "$env:RUNNER_TEMP\source" "BiliMusic_V0.1.2"
           if (!(Test-Path (Join-Path $project "main.py"))) {
             throw "main.py was not found in the extracted source archive."
@@ -57,12 +58,12 @@ jobs:
       - name: Package build output
         shell: pwsh
         run: |
-          Compress-Archive -Path "$env:PROJECT_DIR\dist\BiliMusic\*" -DestinationPath "$env:GITHUB_WORKSPACE\BiliMusic-V0.1.2-Windows-x64.zip" -Force
+          Compress-Archive -Path "$env:PROJECT_DIR\dist\BiliMusic\*" -DestinationPath "$env:GITHUB_WORKSPACE\BiliMusic-V0.1.2.1-Windows-x64.zip" -Force
 
       - name: Upload executable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BiliMusic-V0.1.2-Windows-x64
-          path: BiliMusic-V0.1.2-Windows-x64.zip
+          name: BiliMusic-V0.1.2.1-Windows-x64
+          path: BiliMusic-V0.1.2.1-Windows-x64.zip
           if-no-files-found: error
           retention-days: 14
