@@ -1,10 +1,10 @@
-name: Build BiliMusic for Windows
+name: Build BiliMusic V0.2.0 for Windows
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - "BiliMusic_V0.1.4.2_Windows.zip"
+      - "BiliMusic_V0.2.0_Source.zip"
       - ".github/workflows/build-windows.yml"
 
 permissions:
@@ -14,6 +14,7 @@ jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 30
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,14 +27,25 @@ jobs:
       - name: Extract source archive
         shell: pwsh
         run: |
-          if (!(Test-Path "BiliMusic_V0.1.4.2_Windows.zip")) {
-            throw "Source archive not found. Upload BiliMusic_V0.1.4.2_Windows.zip to the repository root."
+          $archive = "BiliMusic_V0.2.0_Source.zip"
+          if (!(Test-Path $archive)) {
+            throw "Source archive not found: $archive"
           }
-          Expand-Archive -Path "BiliMusic_V0.1.4.2_Windows.zip" -DestinationPath "$env:RUNNER_TEMP\source" -Force
-          $project = Join-Path "$env:RUNNER_TEMP\source" "BiliMusic_V0.1.4.2"
-          if (!(Test-Path (Join-Path $project "main.py"))) {
-            throw "main.py was not found in the extracted source archive."
+
+          $sourceRoot = Join-Path $env:RUNNER_TEMP "BiliMusic-V0.2.0-source"
+          New-Item -ItemType Directory -Path $sourceRoot -Force | Out-Null
+          Expand-Archive -Path $archive -DestinationPath $sourceRoot -Force
+
+          $mainFiles = Get-ChildItem -Path $sourceRoot -Filter "main.py" -Recurse -File
+          if ($mainFiles.Count -ne 1) {
+            throw "Expected exactly one main.py in the source archive; found $($mainFiles.Count)."
           }
+
+          $project = $mainFiles[0].Directory.FullName
+          if (!(Test-Path (Join-Path $project "requirements-dev.txt"))) {
+            throw "requirements-dev.txt was not found in $project"
+          }
+
           "PROJECT_DIR=$project" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Install dependencies
@@ -57,12 +69,13 @@ jobs:
       - name: Package build output
         shell: pwsh
         run: |
-          Compress-Archive -Path "$env:PROJECT_DIR\dist\BiliMusic\*" -DestinationPath "$env:GITHUB_WORKSPACE\BiliMusic-V0.1.4.2-Windows-x64.zip" -Force
+          $output = Join-Path $env:GITHUB_WORKSPACE "BiliMusic-V0.2.0-Windows-x64.zip"
+          Compress-Archive -Path "$env:PROJECT_DIR\dist\BiliMusic\*" -DestinationPath $output -Force
 
       - name: Upload executable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BiliMusic-V0.1.4.2-Windows-x64
-          path: BiliMusic-V0.1.4.2-Windows-x64.zip
+          name: BiliMusic-V0.2.0-Windows-x64
+          path: BiliMusic-V0.2.0-Windows-x64.zip
           if-no-files-found: error
           retention-days: 14
