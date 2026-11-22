@@ -24,7 +24,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Extract source archive
+      - name: Extract and validate V0.2.0 source
         shell: pwsh
         run: |
           $archive = "BiliMusic_V0.2.0_Source.zip"
@@ -36,14 +36,28 @@ jobs:
           New-Item -ItemType Directory -Path $sourceRoot -Force | Out-Null
           Expand-Archive -Path $archive -DestinationPath $sourceRoot -Force
 
-          $mainFiles = Get-ChildItem -Path $sourceRoot -Filter "main.py" -Recurse -File
-          if ($mainFiles.Count -ne 1) {
-            throw "Expected exactly one main.py in the source archive; found $($mainFiles.Count)."
+          # The archive intentionally contains both the accepted V0.1.4.2
+          # baseline and the new V0.2.0 project. Build only the V0.2.0 folder.
+          $project = Join-Path $sourceRoot "BiliMusic_V0.2.0"
+
+          if (!(Test-Path (Join-Path $project "main.py"))) {
+            throw "V0.2.0 main.py was not found at: $project"
+          }
+          if (!(Test-Path (Join-Path $project "requirements-dev.txt"))) {
+            throw "V0.2.0 requirements-dev.txt was not found."
+          }
+          if (!(Test-Path (Join-Path $project "app\ui\main_window.py"))) {
+            throw "V0.2.0 desktop UI source was not found."
           }
 
-          $project = $mainFiles[0].Directory.FullName
-          if (!(Test-Path (Join-Path $project "requirements-dev.txt"))) {
-            throw "requirements-dev.txt was not found in $project"
+          $projectMetadata = Get-Content (Join-Path $project "pyproject.toml") -Raw
+          if ($projectMetadata -notmatch '(?m)^version\s*=\s*"0\.2\.0"\s*$') {
+            throw "The selected project metadata does not identify version 0.2.0."
+          }
+
+          $mainWindow = Get-Content (Join-Path $project "app\ui\main_window.py") -Raw
+          if ($mainWindow -notmatch 'B站消息测试') {
+            throw "The V0.2.0 B站消息测试 page marker was not found. Refusing to build."
           }
 
           "PROJECT_DIR=$project" | Out-File -FilePath $env:GITHUB_ENV -Append
