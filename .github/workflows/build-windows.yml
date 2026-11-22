@@ -1,10 +1,10 @@
-name: Build BiliMusic V0.3.0 for Windows
+name: Build BiliMusic V0.4.0 for Windows
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - "BiliMusic_V0.3.0_Source.zip"
+      - "BiliMusic_V0.4.0_Source.zip"
       - ".github/workflows/build-windows.yml"
 
 permissions:
@@ -13,8 +13,7 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 40
-
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,43 +23,22 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Extract and validate V0.3.0 source
+      - name: Extract and validate V0.4.0 source
         shell: pwsh
         run: |
-          $archive = "BiliMusic_V0.3.0_Source.zip"
-          if (!(Test-Path $archive)) {
-            throw "Source archive not found: $archive"
+          $archive = "BiliMusic_V0.4.0_Source.zip"
+          if (!(Test-Path $archive)) { throw "Source archive not found: $archive" }
+          $root = Join-Path $env:RUNNER_TEMP "BiliMusic-V0.4.0-source"
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+          Expand-Archive -Path $archive -DestinationPath $root -Force
+          $project = Join-Path $root "BiliMusic_V0.4.0"
+          foreach ($required in @("main.py", "requirements-dev.txt", "app\ui\main_window.py", "app\core\playlists.py", "tests\test_playlists.py")) {
+            if (!(Test-Path (Join-Path $project $required))) { throw "Required V0.4.0 file missing: $required" }
           }
-
-          $sourceRoot = Join-Path $env:RUNNER_TEMP "BiliMusic-V0.3.0-source"
-          New-Item -ItemType Directory -Path $sourceRoot -Force | Out-Null
-          Expand-Archive -Path $archive -DestinationPath $sourceRoot -Force
-
-          # Select one exact versioned project directory; never scan for main.py.
-          $project = Join-Path $sourceRoot "BiliMusic_V0.3.0"
-          if (!(Test-Path (Join-Path $project "main.py"))) {
-            throw "V0.3.0 main.py was not found at: $project"
-          }
-          if (!(Test-Path (Join-Path $project "app\integrations\bilibili\open_live_client.py"))) {
-            throw "V0.3.0 official Open Live client module is missing."
-          }
-          if (!(Test-Path (Join-Path $project "app\integrations\bilibili\credential_store.py"))) {
-            throw "V0.3.0 protected credential store module is missing."
-          }
-          if (!(Test-Path (Join-Path $project "RELEASE_STATUS.md"))) {
-            throw "Release status file is missing."
-          }
-
-          $metadata = Get-Content (Join-Path $project "pyproject.toml") -Raw
-          if ($metadata -notmatch '(?m)^version\s*=\s*"0\.3\.0"\s*$') {
-            throw "Selected source metadata does not identify version 0.3.0."
-          }
-
-          $mainWindow = Get-Content (Join-Path $project "app\ui\main_window.py") -Raw
-          if ($mainWindow -notmatch 'B站开放平台') {
-            throw "V0.3.0 official Open Platform desktop page marker is missing."
-          }
-
+          $meta = Get-Content (Join-Path $project "pyproject.toml") -Raw
+          if ($meta -notmatch '(?m)^version\s*=\s*"0\.4\.0"\s*$') { throw "Project version is not 0.4.0" }
+          $ui = Get-Content (Join-Path $project "app\ui\main_window.py") -Raw
+          if ($ui -notmatch '歌单管理') { throw "Playlist management UI marker missing" }
           "PROJECT_DIR=$project" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Install dependencies
@@ -79,18 +57,17 @@ jobs:
         shell: pwsh
         run: |
           Set-Location $env:PROJECT_DIR
-          python -m PyInstaller --noconfirm --clean --windowed --onedir --name BiliMusic --collect-all PySide6 --collect-all websocket main.py
+          python -m PyInstaller --noconfirm --clean --windowed --onedir --name BiliMusic --collect-all PySide6 main.py
 
       - name: Package build output
         shell: pwsh
         run: |
-          $output = Join-Path $env:GITHUB_WORKSPACE "BiliMusic-V0.3.0-Windows-x64.zip"
-          Compress-Archive -Path "$env:PROJECT_DIR\dist\BiliMusic\*" -DestinationPath $output -Force
+          Compress-Archive -Path "$env:PROJECT_DIR\dist\BiliMusic\*" -DestinationPath "$env:GITHUB_WORKSPACE\BiliMusic-V0.4.0-Windows-x64.zip" -Force
 
       - name: Upload executable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BiliMusic-V0.3.0-Windows-x64
-          path: BiliMusic-V0.3.0-Windows-x64.zip
+          name: BiliMusic-V0.4.0-Windows-x64
+          path: BiliMusic-V0.4.0-Windows-x64.zip
           if-no-files-found: error
           retention-days: 14
