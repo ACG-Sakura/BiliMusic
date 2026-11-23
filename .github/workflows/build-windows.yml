@@ -1,12 +1,9 @@
-name: Build BiliMusic V0.4.33 for Windows
+name: Build BiliMusic V0.4.34 for Windows
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - "BiliMusic_V0.4.33_Source.zip"
-      - ".github/workflows/build-windows.yml"
 
 permissions:
   contents: read
@@ -19,85 +16,71 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract V0.4.33 source archive
+      - name: Locate and validate source tree
         shell: pwsh
         run: |
-          $archiveName = "BiliMusic_V0.4.33_Source.zip"
-          $archive = Join-Path $env:GITHUB_WORKSPACE $archiveName
-          if (!(Test-Path -LiteralPath $archive -PathType Leaf)) {
-            throw "Source archive not found: $archiveName. Upload this exact ZIP name to the repository root."
+          $candidates = @()
+          $candidates += Get-ChildItem -Path $env:GITHUB_WORKSPACE -Filter pyproject.toml -File -Recurse -ErrorAction SilentlyContinue
+          $projectFile = $candidates | Where-Object {
+            $dir = $_.Directory.FullName
+            (Test-Path (Join-Path $dir 'main.py')) -and
+            (Test-Path (Join-Path $dir 'netease-api/package.json')) -and
+            (Test-Path (Join-Path $dir 'netease-api/server.js'))
+          } | Select-Object -First 1
+          if (!$projectFile) {
+            throw 'Could not locate BiliMusic source root (pyproject.toml, main.py and netease-api files).'
           }
-
-          Expand-Archive -LiteralPath $archive -DestinationPath $env:GITHUB_WORKSPACE -Force
-          $project = Join-Path $env:GITHUB_WORKSPACE "BiliMusic_V0.4.33"
-          $required = @(
-            "main.py",
-            "requirements.txt",
-            "requirements-dev.txt",
-            "pyproject.toml",
-            "netease-api/package.json",
-            "netease-api/server.js"
-          )
+          $project = $projectFile.Directory.FullName
+          $required = @('requirements.txt','requirements-dev.txt','app/integrations/music/netease_service.py')
           foreach ($file in $required) {
             if (!(Test-Path -LiteralPath (Join-Path $project $file) -PathType Leaf)) {
-              throw "Required project file missing after extraction: $file"
+              throw "Required source file missing: $file"
             }
           }
           "BILIMUSIC_PROJECT=$project" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Using project root: $project"
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: BiliMusic_V0.4.33/requirements-dev.txt
+          python-version: '3.11'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: '22'
 
       - name: Install Python dependencies
         shell: pwsh
         run: |
           Set-Location -LiteralPath $env:BILIMUSIC_PROJECT
           python -m pip install --upgrade pip
-          if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed" }
+          if ($LASTEXITCODE -ne 0) { throw 'pip upgrade failed' }
           python -m pip install -r requirements-dev.txt
-          if ($LASTEXITCODE -ne 0) { throw "Python dependency installation failed" }
+          if ($LASTEXITCODE -ne 0) { throw 'Python dependency installation failed' }
 
       - name: Install local NetEase API runtime
         shell: pwsh
         run: |
-          # npm must run in the folder that contains package.json. The previous
-          # --prefix relative-path form caused npm to look for a package.json
-          # in the BiliMusic project root, where none exists.
-          $apiDir = Join-Path $env:BILIMUSIC_PROJECT "netease-api"
-          $packageJson = Join-Path $apiDir "package.json"
-          if (!(Test-Path -LiteralPath $packageJson -PathType Leaf)) {
-            throw "NetEase package.json is missing: $packageJson"
+          $apiDir = Join-Path $env:BILIMUSIC_PROJECT 'netease-api'
+          if (!(Test-Path -LiteralPath (Join-Path $apiDir 'package.json') -PathType Leaf)) {
+            throw 'netease-api/package.json not found'
           }
-
           Push-Location -LiteralPath $apiDir
           try {
             npm install --omit=dev --no-audit --no-fund
-            if ($LASTEXITCODE -ne 0) { throw "npm install failed while running inside netease-api" }
+            if ($LASTEXITCODE -ne 0) { throw 'npm install failed in netease-api' }
+          } finally { Pop-Location }
+          $moduleManifest = Join-Path $apiDir 'node_modules/@neteasecloudmusicapienhanced/api/package.json'
+          if (!(Test-Path -LiteralPath $moduleManifest -PathType Leaf)) {
+            throw 'NetEase API npm package was not installed'
           }
-          finally {
-            Pop-Location
-          }
-
-          $apiModule = Join-Path $apiDir "node_modules/@neteasecloudmusicapienhanced/api/package.json"
-          if (!(Test-Path -LiteralPath $apiModule -PathType Leaf)) {
-            throw "NetEase API dependency was not installed: $apiModule"
-          }
-
-          $runtime = Join-Path $apiDir "runtime"
+          $runtime = Join-Path $apiDir 'runtime'
           New-Item -ItemType Directory -Force $runtime | Out-Null
           $nodeExe = (Get-Command node -ErrorAction Stop).Source
-          Copy-Item -LiteralPath $nodeExe -Destination (Join-Path $runtime "node.exe") -Force
-          if (!(Test-Path -LiteralPath (Join-Path $runtime "node.exe") -PathType Leaf)) {
-            throw "Failed to copy Node.js runtime into netease-api/runtime."
+          Copy-Item -LiteralPath $nodeExe -Destination (Join-Path $runtime 'node.exe') -Force
+          if (!(Test-Path -LiteralPath (Join-Path $runtime 'node.exe') -PathType Leaf)) {
+            throw 'Bundled node.exe was not created'
           }
 
       - name: Run automated tests
@@ -105,14 +88,14 @@ jobs:
         run: |
           Set-Location -LiteralPath $env:BILIMUSIC_PROJECT
           python -m pytest -q
-          if ($LASTEXITCODE -ne 0) { throw "Automated tests failed" }
+          if ($LASTEXITCODE -ne 0) { throw 'Automated tests failed' }
 
       - name: Compile Python sources
         shell: pwsh
         run: |
           Set-Location -LiteralPath $env:BILIMUSIC_PROJECT
           python -m compileall -q app tests main.py
-          if ($LASTEXITCODE -ne 0) { throw "Python compilation failed" }
+          if ($LASTEXITCODE -ne 0) { throw 'Python compilation failed' }
 
       - name: Build Windows app
         shell: pwsh
@@ -120,17 +103,20 @@ jobs:
           Set-Location -LiteralPath $env:BILIMUSIC_PROJECT
           python -m PyInstaller --noconfirm --clean --windowed --onedir `
             --name BiliMusic --collect-all PySide6 `
-            --add-data "netease-api;netease-api" main.py
-          if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed" }
+            --add-data 'netease-api;netease-api' main.py
+          if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed' }
 
       - name: Verify bundled NetEase runtime
         shell: pwsh
         run: |
-          $bundle = Join-Path $env:BILIMUSIC_PROJECT "dist/BiliMusic/netease-api"
+          # PyInstaller 6 places --add-data files under _internal by default.
+          # In a frozen one-folder build, sys._MEIPASS points to that directory;
+          # NeteaseServiceManager resolves _MEIPASS/netease-api accordingly.
+          $bundle = Join-Path $env:BILIMUSIC_PROJECT 'dist/BiliMusic/_internal/netease-api'
           $checks = @(
-            (Join-Path $bundle "server.js"),
-            (Join-Path $bundle "runtime/node.exe"),
-            (Join-Path $bundle "node_modules/@neteasecloudmusicapienhanced/api/package.json")
+            (Join-Path $bundle 'server.js'),
+            (Join-Path $bundle 'runtime/node.exe'),
+            (Join-Path $bundle 'node_modules/@neteasecloudmusicapienhanced/api/package.json')
           )
           foreach ($item in $checks) {
             if (!(Test-Path -LiteralPath $item -PathType Leaf)) {
@@ -138,10 +124,21 @@ jobs:
             }
           }
 
+      - name: Stage Windows build artifact
+        shell: pwsh
+        run: |
+          $source = Join-Path $env:BILIMUSIC_PROJECT 'dist/BiliMusic'
+          $target = Join-Path $env:GITHUB_WORKSPACE 'artifact/BiliMusic'
+          if (!(Test-Path -LiteralPath (Join-Path $source 'BiliMusic.exe') -PathType Leaf)) {
+            throw 'BiliMusic.exe was not produced by PyInstaller'
+          }
+          New-Item -ItemType Directory -Force $target | Out-Null
+          Copy-Item -Path (Join-Path $source '*') -Destination $target -Recurse -Force
+
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: BiliMusic-V0.4.33-Windows-x64
-          path: BiliMusic_V0.4.33/dist/BiliMusic/
+          name: BiliMusic-V0.4.34-Windows-x64
+          path: artifact/BiliMusic/
           if-no-files-found: error
           retention-days: 14
