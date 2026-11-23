@@ -1,4 +1,4 @@
-name: Build BiliMusic V0.4.35 for Windows
+name: Build BiliMusic V0.4.36 for Windows
 
 on:
   workflow_dispatch:
@@ -18,17 +18,17 @@ jobs:
 
       # The repository stores the project as a versioned source ZIP at its root.
       # It must be extracted before searching for pyproject.toml/main.py.
-      - name: Extract and locate V0.4.35 source archive
+      - name: Extract and locate V0.4.36 source archive
         shell: pwsh
         run: |
-          $archiveName = 'BiliMusic_V0.4.35_Source.zip'
+          $archiveName = 'BiliMusic_V0.4.36_Source.zip'
           $archive = Join-Path $env:GITHUB_WORKSPACE $archiveName
           if (!(Test-Path -LiteralPath $archive -PathType Leaf)) {
             $available = Get-ChildItem -LiteralPath $env:GITHUB_WORKSPACE -Filter '*Source*.zip' -File | Select-Object -ExpandProperty Name
             throw "Source archive not found: $archiveName. ZIP files found: $($available -join ', ')"
           }
 
-          $extractRoot = Join-Path $env:RUNNER_TEMP 'BiliMusic-V0.4.35-source'
+          $extractRoot = Join-Path $env:RUNNER_TEMP 'BiliMusic-V0.4.36-source'
           if (Test-Path -LiteralPath $extractRoot) {
             Remove-Item -LiteralPath $extractRoot -Recurse -Force
           }
@@ -171,7 +171,7 @@ jobs:
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: BiliMusic-V0.4.35-Windows-x64
+          name: BiliMusic-V0.4.36-Windows-x64
           path: artifact/BiliMusic/
           if-no-files-found: error
           retention-days: 14
