@@ -1,11 +1,11 @@
-name: Build BiliMusic V0.4.311 for Windows
+name: Build BiliMusic V0.4.32 for Windows
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - "BiliMusic_V0.4.3111_Source.zip"
+      - "BiliMusic_V0.4.32_Source.zip"
       - ".github/workflows/build-windows.yml"
 
 permissions:
@@ -19,20 +19,28 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Source is committed as a ZIP at the repository root. Extract it before
-      # setup-python so pip's dependency cache can locate the requirements file.
-      - name: Extract V0.4.311 source archive
+      # The repository stores the complete project as a ZIP at its root.
+      # Extract it before setup-python so pip cache discovery can find the
+      # requirements file inside the extracted project directory.
+      - name: Extract V0.4.32 source archive
         shell: pwsh
         run: |
-          $archive = Join-Path $env:GITHUB_WORKSPACE "BiliMusic_V0.4.3111_Source.zip"
+          $archiveName = "BiliMusic_V0.4.32_Source.zip"
+          $archive = Join-Path $env:GITHUB_WORKSPACE $archiveName
           if (!(Test-Path -LiteralPath $archive)) {
-            throw "Source archive not found: BiliMusic_V0.4.3111_Source.zip"
+            throw "Source archive not found: $archiveName. Upload this ZIP to the repository root."
           }
+
           Expand-Archive -LiteralPath $archive -DestinationPath $env:GITHUB_WORKSPACE -Force
-          $project = Join-Path $env:GITHUB_WORKSPACE "BiliMusic_V0.4.3111"
+
+          $project = Join-Path $env:GITHUB_WORKSPACE "BiliMusic_V0.4.32"
+          if (!(Test-Path -LiteralPath $project -PathType Container)) {
+            throw "Expected extracted project folder not found: BiliMusic_V0.4.32"
+          }
+
           $required = @("main.py", "requirements.txt", "requirements-dev.txt", "pyproject.toml")
           foreach ($file in $required) {
-            if (!(Test-Path -LiteralPath (Join-Path $project $file))) {
+            if (!(Test-Path -LiteralPath (Join-Path $project $file) -PathType Leaf)) {
               throw "Expected project file missing after extraction: $file"
             }
           }
@@ -42,7 +50,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: BiliMusic_V0.4.3111/requirements-dev.txt
+          cache-dependency-path: BiliMusic_V0.4.32/requirements-dev.txt
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -50,14 +58,14 @@ jobs:
           node-version: "22"
 
       - name: Install Python dependencies
-        working-directory: BiliMusic_V0.4.3111
+        working-directory: BiliMusic_V0.4.32
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
 
       - name: Install local NetEase API runtime
-        working-directory: BiliMusic_V0.4.3111
+        working-directory: BiliMusic_V0.4.32
         shell: pwsh
         run: |
           npm install --prefix netease-api --omit=dev --no-audit --no-fund
@@ -65,15 +73,15 @@ jobs:
           Copy-Item (Get-Command node).Source netease-api/runtime/node.exe -Force
 
       - name: Run automated tests
-        working-directory: BiliMusic_V0.4.3111
+        working-directory: BiliMusic_V0.4.32
         run: python -m pytest -q
 
       - name: Compile Python sources
-        working-directory: BiliMusic_V0.4.3111
+        working-directory: BiliMusic_V0.4.32
         run: python -m compileall -q app tests main.py
 
       - name: Build Windows app
-        working-directory: BiliMusic_V0.4.3111
+        working-directory: BiliMusic_V0.4.32
         run: >-
           python -m PyInstaller --noconfirm --clean --windowed --onedir
           --name BiliMusic --collect-all PySide6
@@ -82,7 +90,7 @@ jobs:
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: BiliMusic-V0.4.311-Windows-x64
-          path: BiliMusic_V0.4.3111/dist/BiliMusic/
+          name: BiliMusic-V0.4.32-Windows-x64
+          path: BiliMusic_V0.4.32/dist/BiliMusic/
           if-no-files-found: error
           retention-days: 14
