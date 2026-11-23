@@ -1,10 +1,10 @@
-name: Build BiliMusic V0.4.0 for Windows
+name: Build BiliMusic V0.4.1 for Windows
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - "BiliMusic_V0.4.0_Source.zip"
+      - "BiliMusic_V0.4.1_Source.zip"
       - ".github/workflows/build-windows.yml"
 
 permissions:
@@ -13,7 +13,8 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,22 +24,44 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Extract and validate V0.4.0 source
+      - name: Extract and validate V0.4.1 source
         shell: pwsh
         run: |
-          $archive = "BiliMusic_V0.4.0_Source.zip"
+          $archive = "BiliMusic_V0.4.1_Source.zip"
           if (!(Test-Path $archive)) { throw "Source archive not found: $archive" }
-          $root = Join-Path $env:RUNNER_TEMP "BiliMusic-V0.4.0-source"
+          $root = Join-Path $env:RUNNER_TEMP "BiliMusic-V0.4.1-source"
           New-Item -ItemType Directory -Path $root -Force | Out-Null
           Expand-Archive -Path $archive -DestinationPath $root -Force
-          $project = Join-Path $root "BiliMusic_V0.4.0"
-          foreach ($required in @("main.py", "requirements-dev.txt", "app\ui\main_window.py", "app\core\playlists.py", "tests\test_playlists.py")) {
-            if (!(Test-Path (Join-Path $project $required))) { throw "Required V0.4.0 file missing: $required" }
+          $project = Join-Path $root "BiliMusic_V0.4.1"
+
+          $required = @(
+            "main.py",
+            "requirements-dev.txt",
+            "app\ui\main_window.py",
+            "app\core\playlists.py",
+            "app\core\playback.py",
+            "app\integrations\music\qqmusic.py",
+            "app\integrations\music\qt_player.py",
+            "app\integrations\music\secret_store.py",
+            "tests\test_music_v041.py"
+          )
+          foreach ($file in $required) {
+            if (!(Test-Path (Join-Path $project $file))) {
+              throw "Required V0.4.1 component missing: $file"
+            }
           }
+
           $meta = Get-Content (Join-Path $project "pyproject.toml") -Raw
-          if ($meta -notmatch '(?m)^version\s*=\s*"0\.4\.0"\s*$') { throw "Project version is not 0.4.0" }
+          if ($meta -notmatch '(?m)^version\s*=\s*"0\.4\.1"\s*$') {
+            throw "Project metadata is not version 0.4.1"
+          }
           $ui = Get-Content (Join-Path $project "app\ui\main_window.py") -Raw
-          if ($ui -notmatch '歌单管理') { throw "Playlist management UI marker missing" }
+          foreach ($marker in @("音乐播放器", "同步所选歌单", "导入音频文件", "QQPlaylistSyncWorker")) {
+            if ($ui -notmatch [regex]::Escape($marker)) {
+              throw "V0.4.1 UI marker missing: $marker"
+            }
+          }
+
           "PROJECT_DIR=$project" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Install dependencies
@@ -47,7 +70,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r "$env:PROJECT_DIR\requirements-dev.txt"
 
-      - name: Run tests
+      - name: Run automated tests
         shell: pwsh
         run: |
           Set-Location $env:PROJECT_DIR
@@ -57,17 +80,18 @@ jobs:
         shell: pwsh
         run: |
           Set-Location $env:PROJECT_DIR
-          python -m PyInstaller --noconfirm --clean --windowed --onedir --name BiliMusic --collect-all PySide6 main.py
+          python -m PyInstaller --noconfirm --clean --windowed --onedir --name BiliMusic --collect-all PySide6 --hidden-import PySide6.QtMultimedia main.py
 
       - name: Package build output
         shell: pwsh
         run: |
-          Compress-Archive -Path "$env:PROJECT_DIR\dist\BiliMusic\*" -DestinationPath "$env:GITHUB_WORKSPACE\BiliMusic-V0.4.0-Windows-x64.zip" -Force
+          $output = Join-Path $env:GITHUB_WORKSPACE "BiliMusic-V0.4.1-Windows-x64.zip"
+          Compress-Archive -Path "$env:PROJECT_DIR\dist\BiliMusic\*" -DestinationPath $output -Force
 
       - name: Upload executable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BiliMusic-V0.4.0-Windows-x64
-          path: BiliMusic-V0.4.0-Windows-x64.zip
+          name: BiliMusic-V0.4.1-Windows-x64
+          path: BiliMusic-V0.4.1-Windows-x64.zip
           if-no-files-found: error
           retention-days: 14
