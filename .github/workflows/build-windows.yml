@@ -1,9 +1,12 @@
-name: Build BiliMusic V0.4.3 for Windows
+name: Build BiliMusic V0.4.311 for Windows
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths:
+      - "BiliMusic_V0.4.3111_Source.zip"
+      - ".github/workflows/build-windows.yml"
 
 permissions:
   contents: read
@@ -11,34 +14,75 @@ permissions:
 jobs:
   test-and-build:
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Source is committed as a ZIP at the repository root. Extract it before
+      # setup-python so pip's dependency cache can locate the requirements file.
+      - name: Extract V0.4.311 source archive
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:GITHUB_WORKSPACE "BiliMusic_V0.4.3111_Source.zip"
+          if (!(Test-Path -LiteralPath $archive)) {
+            throw "Source archive not found: BiliMusic_V0.4.3111_Source.zip"
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $env:GITHUB_WORKSPACE -Force
+          $project = Join-Path $env:GITHUB_WORKSPACE "BiliMusic_V0.4.3111"
+          $required = @("main.py", "requirements.txt", "requirements-dev.txt", "pyproject.toml")
+          foreach ($file in $required) {
+            if (!(Test-Path -LiteralPath (Join-Path $project $file))) {
+              throw "Expected project file missing after extraction: $file"
+            }
+          }
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
           cache: pip
-      - uses: actions/setup-node@v4
+          cache-dependency-path: BiliMusic_V0.4.3111/requirements-dev.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
+
       - name: Install Python dependencies
+        working-directory: BiliMusic_V0.4.3111
+        shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          python -m pip install -r requirements-dev.txt
+
       - name: Install local NetEase API runtime
+        working-directory: BiliMusic_V0.4.3111
         shell: pwsh
         run: |
           npm install --prefix netease-api --omit=dev --no-audit --no-fund
           New-Item -ItemType Directory -Force netease-api/runtime | Out-Null
           Copy-Item (Get-Command node).Source netease-api/runtime/node.exe -Force
+
       - name: Run automated tests
-        run: pytest -q
+        working-directory: BiliMusic_V0.4.3111
+        run: python -m pytest -q
+
       - name: Compile Python sources
+        working-directory: BiliMusic_V0.4.3111
         run: python -m compileall -q app tests main.py
+
       - name: Build Windows app
-        run: pyinstaller --noconfirm --clean --windowed --onedir --name BiliMusic --collect-all PySide6 --add-data "netease-api;netease-api" main.py
-      - uses: actions/upload-artifact@v4
+        working-directory: BiliMusic_V0.4.3111
+        run: >-
+          python -m PyInstaller --noconfirm --clean --windowed --onedir
+          --name BiliMusic --collect-all PySide6
+          --add-data "netease-api;netease-api" main.py
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
         with:
-          name: BiliMusic-V0.4.3-Windows-x64
-          path: dist/BiliMusic/
+          name: BiliMusic-V0.4.311-Windows-x64
+          path: BiliMusic_V0.4.3111/dist/BiliMusic/
           if-no-files-found: error
           retention-days: 14
