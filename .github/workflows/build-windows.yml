@@ -1,4 +1,4 @@
-name: Build BiliMusic V0.4.39 for Windows
+name: Build BiliMusic V0.4.391 for Windows
 
 on:
   workflow_dispatch:
@@ -18,17 +18,17 @@ jobs:
 
       # The repository stores the project as a versioned source ZIP at its root.
       # It must be extracted before searching for pyproject.toml/main.py.
-      - name: Extract and locate V0.4.39 source archive
+      - name: Extract and locate V0.4.391 source archive
         shell: pwsh
         run: |
-          $archiveName = 'BiliMusic_V0.4.39_Source.zip'
+          $archiveName = 'BiliMusic_V0.4.391_Source.zip'
           $archive = Join-Path $env:GITHUB_WORKSPACE $archiveName
           if (!(Test-Path -LiteralPath $archive -PathType Leaf)) {
             $available = Get-ChildItem -LiteralPath $env:GITHUB_WORKSPACE -Filter '*Source*.zip' -File | Select-Object -ExpandProperty Name
             throw "Source archive not found: $archiveName. ZIP files found: $($available -join ', ')"
           }
 
-          $extractRoot = Join-Path $env:RUNNER_TEMP 'BiliMusic-V0.4.39-source'
+          $extractRoot = Join-Path $env:RUNNER_TEMP 'BiliMusic-V0.4.391-source'
           if (Test-Path -LiteralPath $extractRoot) {
             Remove-Item -LiteralPath $extractRoot -Recurse -Force
           }
@@ -121,8 +121,9 @@ jobs:
         run: |
           Set-Location -LiteralPath $env:BILIMUSIC_PROJECT
           python -m PyInstaller --noconfirm --clean --windowed --onedir `
-            --name BiliMusic --collect-all PySide6 `
-            --add-data 'netease-api;netease-api' --add-data 'app/obs/lyrics.html;app/obs' --add-data 'assets/lyrics_font.ttf;assets' main.py
+            --name BiliMusic --collect-all PySide6 --collect-all websockets `
+            --add-data 'netease-api;netease-api' `
+            --add-data 'app/integrations/obs/web;app/integrations/obs/web' main.py
           if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed' }
 
       - name: Verify bundled NetEase runtime
@@ -133,15 +134,6 @@ jobs:
           if (!(Test-Path -LiteralPath $exe -PathType Leaf)) {
             throw "PyInstaller did not produce BiliMusic.exe: $exe"
           }
-
-          $assetRoots = @((Join-Path $dist '_internal'), $dist)
-          $htmlFound = $false
-          $fontFound = $false
-          foreach ($root in $assetRoots) {
-            if (Test-Path -LiteralPath (Join-Path $root 'app/obs/lyrics.html')) { $htmlFound = $true }
-            if (Test-Path -LiteralPath (Join-Path $root 'assets/lyrics_font.ttf')) { $fontFound = $true }
-          }
-          if (!$htmlFound -or !$fontFound) { throw 'OBS lyrics HTML or supplied font is missing from the Windows bundle.' }
 
           # PyInstaller 6's default onedir layout places data under _internal.
           # Check both locations to remain compatible if the build config changes.
@@ -180,7 +172,7 @@ jobs:
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: BiliMusic-V0.4.39-Windows-x64
+          name: BiliMusic-V0.4.391-Windows-x64
           path: artifact/BiliMusic/
           if-no-files-found: error
           retention-days: 14
